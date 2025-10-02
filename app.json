@@ -24,7 +24,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.VIBRATE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -47,6 +54,10 @@
       "eas": {
         "projectId": "5f28f918-8f8b-4245-bd88-3ae1dcf6b64c"
       }
-    }
+    },
+    "updates": {
+      "enabled": false
+    },
+    "runtimeVersion": "1.0.0"
   }
 }

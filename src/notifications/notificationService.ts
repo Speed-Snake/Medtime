@@ -12,9 +12,11 @@ let showAlarmModal: ((medication: any) => void) | null = null;
 // Configurar el comportamiento de las notificaciones
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
+    console.log('[NotificationService] Procesando notificación:', notification.request.content.title);
+    
     // Si es una notificación de medicamento, mostrar notificación del sistema
     // para que funcione cuando la app está en segundo plano
-    if (notification.request.content.data?.showModal) {
+    if (notification.request.content.data?.showModal || notification.request.content.data?.isAlarm) {
       return {
         shouldShowAlert: true,
         shouldPlaySound: true,
@@ -155,8 +157,23 @@ export async function requestNotificationPermissions(): Promise<boolean> {
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
           bypassDnd: true, // Pasar el modo "No molestar"
         });
+
+        // Canal adicional para alarmas críticas
+        await Notifications.setNotificationChannelAsync('medtime-alarms', {
+          name: 'Alarmas de Medicamentos',
+          description: 'Alarmas críticas para medicamentos',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200],
+          lightColor: '#FF231F7C',
+          sound: 'default',
+          enableVibrate: true,
+          enableLights: true,
+          showBadge: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+        });
         
-        console.log('[NotificationService] ✅ Canal de notificación configurado para Android');
+        console.log('[NotificationService] ✅ Canales de notificación configurados para Android');
       }
       
       console.log('[NotificationService] ✅ Permisos de notificación concedidos');
@@ -268,10 +285,11 @@ export async function scheduleMedicationNotification(medication: MedItem, schedu
           medicationName: medication.name,
           dose: medication.dose,
           scheduledTime: scheduledTime,
+          showModal: true, // Marcar para mostrar modal
         },
         ...(Platform.OS === 'android' && {
-          channelId: 'medtime-reminders',
-          vibrate: [0, 1000, 500, 1000, 500, 1000],
+          channelId: 'medtime-alarms', // Usar canal de alarmas
+          vibrate: [0, 200, 100, 200, 100, 200, 100, 200, 100, 200, 100, 200],
           lights: true,
           lightColor: '#FF231F7C',
         }),
