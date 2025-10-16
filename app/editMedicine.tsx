@@ -10,9 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ScrollView,
 } from "react-native";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
+import { Calendar } from "react-native-calendars";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import { colors } from "../src/theme/colors";
@@ -23,7 +25,7 @@ import {
   findMedicineById,
 } from "../src/storage/localMedicines";
 import { loadMedicationsCatalog, searchMedications, SupabaseMedication } from "../src/storage/supabaseMedications";
-import { scheduleMedicationNotificationWithAlarm } from "../src/notifications/notificationService";
+import { scheduleMedicationNotificationWithAlarmForDates } from "../src/notifications/notificationService";
 import { cancelAllAlarmsForMedication } from "../src/alarms/alarmService";
 import { useAuth } from "../src/contexts/AuthContext";
 import { combineNextOccurrence } from "../src/utils/helpers";
@@ -49,6 +51,11 @@ export default function EditMedicineScreen() {
   const [query, setQuery] = useState("");
   const [selectedMed, setSelectedMed] = useState<string | null>(null);
   const [selectedDose, setSelectedDose] = useState<MedDose | null>(null);
+  
+  // Estados para fechas seleccionadas
+  const [selectedDates, setSelectedDates] = useState<{[key: string]: any}>({});
+  const [showCalendar, setShowCalendar] = useState(false);
+  
   const [times, setTimes] = useState<Date[]>([]);
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -133,6 +140,19 @@ export default function EditMedicineScreen() {
         setQuery(item.name);
         setSelectedDose(item.dose);
 
+        // Cargar fechas seleccionadas si existen
+        if (item.selectedDates && item.selectedDates.length > 0) {
+          const datesObj: {[key: string]: any} = {};
+          item.selectedDates.forEach(dateString => {
+            datesObj[dateString] = {
+              selected: true,
+              selectedColor: colors.primary,
+              selectedTextColor: '#fff'
+            };
+          });
+          setSelectedDates(datesObj);
+        }
+
         // Convertir sus ISO a "horas del día" para la UI
         const t = item.times.map((iso) => {
           const d = new Date(iso);
@@ -179,6 +199,32 @@ export default function EditMedicineScreen() {
   const removeTime = (idx: number) =>
     setTimes((prev) => prev.filter((_, i) => i !== idx));
 
+  // --- Manejar selección de fechas ---
+  const onDayPress = (day: any) => {
+    const dateString = day.dateString;
+    setSelectedDates(prev => {
+      const newDates = { ...prev };
+      if (newDates[dateString]) {
+        delete newDates[dateString];
+      } else {
+        newDates[dateString] = {
+          selected: true,
+          selectedColor: colors.primary,
+          selectedTextColor: '#fff'
+        };
+      }
+      return newDates;
+    });
+  };
+
+  const removeDate = (dateString: string) => {
+    setSelectedDates(prev => {
+      const newDates = { ...prev };
+      delete newDates[dateString];
+      return newDates;
+    });
+  };
+
   const onSelectSuggestion = (medication: SupabaseMedication) => {
     setSelectedMed(medication.name);
     setQuery(medication.name);
@@ -194,6 +240,10 @@ export default function EditMedicineScreen() {
       }
       if (!selectedDose) {
         Alert.alert("Error de Validación", "Selecciona una dosis disponible.");
+        return;
+      }
+      if (Object.keys(selectedDates).length === 0) {
+        Alert.alert("Error de Validación", "Selecciona al menos una fecha.");
         return;
       }
       if (times.length === 0) {
@@ -216,6 +266,7 @@ export default function EditMedicineScreen() {
         name: selectedMed,
         dose: selectedDose,
         times: combined,
+        selectedDates: Object.keys(selectedDates),
         owner: editingItem?.owner ?? (user?.mode === "guest" ? "guest" : "user"),
         createdAt: editingItem?.createdAt ?? new Date().toISOString(),
       };
@@ -239,12 +290,12 @@ export default function EditMedicineScreen() {
       
       for (const scheduledTime of item.times) {
         try {
-          const notificationId = await scheduleMedicationNotificationWithAlarm(item, scheduledTime);
-          if (notificationId) {
-            totalNotifications++;
+          const notificationIds = await scheduleMedicationNotificationWithAlarmForDates(item, scheduledTime);
+          if (notificationIds.length > 0) {
+            totalNotifications += notificationIds.length;
           }
         } catch (notificationError) {
-          console.error('[EditMedicine] Error al programar notificación:', notificationError);
+          console.error('[EditMedicine] Error al programar notificaciones:', notificationError);
           notificationErrors++;
         }
       }
@@ -305,7 +356,7 @@ export default function EditMedicineScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={s.container}>
+      <ScrollView style={s.container} showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
         <Text style={s.title}>Editar medicamento</Text>
 
         {/* Medicamento */}
@@ -323,20 +374,20 @@ export default function EditMedicineScreen() {
 
         {/* Sugerencias */}
         {selectedMed === null && suggestions.length > 0 && (
-          <FlatList
-            data={suggestions}
-            keyboardShouldPersistTaps="handled"
-            keyExtractor={(item) => item.id}
-            style={s.suggestions}
-            renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => onSelectSuggestion(item)} style={s.suggestionItem}>
+          <View style={s.suggestions}>
+            {suggestions.map((item) => (
+              <TouchableOpacity 
+                key={item.id}
+                onPress={() => onSelectSuggestion(item)} 
+                style={s.suggestionItem}
+              >
                 <Text style={s.suggestionText}>{item.name}</Text>
                 <Text style={s.suggestionDoses}>
                   {item.doses.join(', ')}
                 </Text>
               </TouchableOpacity>
-            )}
-          />
+            ))}
+          </View>
         )}
 
         {loadingCatalog && (
@@ -358,6 +409,71 @@ export default function EditMedicineScreen() {
             ))}
           </Picker>
         </View>
+
+        {/* Fechas */}
+        <Text style={[s.label, { marginTop: 16 }]}>Fechas</Text>
+        <TouchableOpacity 
+          style={[s.dateButton, { backgroundColor: primaryDarker }]} 
+          onPress={() => setShowCalendar(!showCalendar)}
+        >
+          <Text style={s.dateButtonText}>
+            {Object.keys(selectedDates).length > 0 
+              ? `${Object.keys(selectedDates).length} fecha(s) seleccionada(s)` 
+              : "Seleccionar fechas"
+            }
+          </Text>
+        </TouchableOpacity>
+
+        {showCalendar && (
+          <View style={s.calendarContainer}>
+            <Calendar
+              onDayPress={onDayPress}
+              markedDates={selectedDates}
+              theme={{
+                selectedDayBackgroundColor: colors.primary,
+                selectedDayTextColor: '#fff',
+                todayTextColor: colors.primary,
+                dayTextColor: '#2d4150',
+                textDisabledColor: '#d9e1e8',
+                dotColor: colors.primary,
+                selectedDotColor: '#fff',
+                arrowColor: colors.primary,
+                monthTextColor: colors.primary,
+                indicatorColor: colors.primary,
+                textDayFontWeight: '300',
+                textMonthFontWeight: 'bold',
+                textDayHeaderFontWeight: '300'
+              }}
+            />
+          </View>
+        )}
+
+        {/* Fechas seleccionadas */}
+        {Object.keys(selectedDates).length > 0 && (
+          <View style={s.selectedDatesContainer}>
+            <Text style={s.selectedDatesLabel}>Fechas seleccionadas:</Text>
+            <View style={s.selectedDatesWrap}>
+              {Object.keys(selectedDates)
+                .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+                .map((dateString) => {
+                const date = new Date(dateString);
+                const dayName = date.toLocaleDateString('es-ES', { weekday: 'long' });
+                const dayNumber = date.getDate();
+                const monthName = date.toLocaleDateString('es-ES', { month: 'long' });
+                return (
+                  <View key={dateString} style={s.dateChip}>
+                    <Text style={s.dateChipText}>
+                      {dayName} {dayNumber} de {monthName}
+                    </Text>
+                    <TouchableOpacity onPress={() => removeDate(dateString)} style={s.dateChipDel}>
+                      <Text style={s.dateChipDelText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* Horarios */}
         <Text style={[s.label, { marginTop: 16 }]}>Horarios</Text>
@@ -418,13 +534,14 @@ export default function EditMedicineScreen() {
             <Text style={s.btnText}>Ver mi lista</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: "#fff" },
+  scrollContent: { padding: 16, paddingBottom: 100 },
   centerContent: { justifyContent: 'center', alignItems: 'center' },
   title: { fontSize: 22, fontWeight: "800", color: colors.primaryDark, marginBottom: 10, textAlign: "center" },
   label: { fontSize: 14, color: "#555", marginBottom: 6 },
@@ -437,11 +554,13 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
   },
   suggestions: {
-    maxHeight: 140,
+    maxHeight: 120,
     borderWidth: 1,
     borderColor: "#e4e6eb",
     borderRadius: 10,
     marginTop: 6,
+    backgroundColor: "#fff",
+    zIndex: 1000,
   },
   suggestionItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#f0f0f0" },
   suggestionText: { color: "#333", fontSize: 16, fontWeight: "600" },
@@ -488,4 +607,69 @@ const s = StyleSheet.create({
   actions: { marginTop: 16, alignSelf: "stretch" },
   btn: { paddingVertical: 14, borderRadius: 12, alignItems: "center" },
   btnText: { color: "#fff", fontWeight: "800" },
+
+  // Estilos para el calendario
+  dateButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  dateButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  calendarContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#e4e6eb",
+  },
+  selectedDatesContainer: {
+    marginBottom: 10,
+  },
+  selectedDatesLabel: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  selectedDatesWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dateChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#f2f6ff",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#e4e6eb",
+    gap: 8,
+  },
+  dateChipText: {
+    color: colors.primaryDark,
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  dateChipDel: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#eee",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateChipDelText: {
+    color: "#444",
+    fontWeight: "900",
+    fontSize: 16,
+  },
 });

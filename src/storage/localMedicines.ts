@@ -8,6 +8,7 @@ export type MedItem = {
   name: string;
   dose: MedDose;
   times: string[];       // ISO strings
+  selectedDates: string[]; // Fechas seleccionadas en formato YYYY-MM-DD
   owner: "guest" | "user";
   createdAt: string;     // ISO
 };

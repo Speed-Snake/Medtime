@@ -103,6 +103,18 @@ const ListaScreen = React.memo(function ListaScreen() {
 
   const renderItem = ({ item }: { item: MedItem }) => {
     const horarios = item.times.map(fmtHour).join(" · ");
+    
+    // Formatear fechas seleccionadas (ordenadas de menor a mayor)
+    const fechasFormateadas = item.selectedDates?.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+      .map(dateString => {
+        const date = new Date(dateString);
+        const dayName = date.toLocaleDateString('es-ES', { weekday: 'short' });
+        const dayNumber = date.getDate();
+        const monthName = date.toLocaleDateString('es-ES', { month: 'short' });
+        return `${dayName} ${dayNumber} ${monthName}`;
+      })
+      .join(" · ") || "—";
+    
     return (
       <View style={[s.card, { borderColor: primaryCardBorder }]}>
         <View style={s.cardHeader}>
@@ -127,6 +139,9 @@ const ListaScreen = React.memo(function ListaScreen() {
 
         <Text style={s.subText}>
           Dosis: <Text style={s.bold}>{item.dose}</Text>
+        </Text>
+        <Text style={s.subText}>
+          Fechas: <Text style={s.bold}>{fechasFormateadas}</Text>
         </Text>
         <Text style={s.subText}>
           Horarios: <Text style={s.bold}>{horarios || "—"}</Text>

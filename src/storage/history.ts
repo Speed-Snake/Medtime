@@ -9,6 +9,7 @@ export type HistoryEntry = {
   name: string;
   dose: string;
   scheduledTimes: string[]; // horarios planificados (ISO)
+  selectedDates?: string[]; // fechas seleccionadas (YYYY-MM-DD)
   status: HistoryStatus;    // "Tomado" | "Cancelado"
   at: string;               // cuándo se generó este registro (ISO)
 };
@@ -28,6 +29,7 @@ export async function addHistoryFromMed(m: MedItem, status: HistoryStatus) {
     name: m.name,
     dose: m.dose,
     scheduledTimes: m.times,
+    selectedDates: m.selectedDates,
     status,
     at: new Date().toISOString(),
   };
@@ -46,6 +48,7 @@ export async function addManyHistoryFromMeds(meds: MedItem[], status: HistorySta
     name: m.name,
     dose: m.dose,
     scheduledTimes: m.times,
+    selectedDates: m.selectedDates,
     status,
     at: now,
   }));
@@ -75,7 +78,7 @@ export function historyToCSV(rows: HistoryEntry[], userInfo?: { name?: string; a
     csvContent += `\n`; // Línea en blanco
   }
   
-  const header = ["fecha", "medicamento", "dosis", "horarios", "estado"].join(",");
+  const header = ["fecha", "medicamento", "dosis", "fechas_seleccionadas", "horarios", "estado"].join(",");
   const lines = rows.map((r) => {
     const fecha = new Date(r.at).toLocaleString();
     const horarios = r.scheduledTimes
@@ -86,7 +89,11 @@ export function historyToCSV(rows: HistoryEntry[], userInfo?: { name?: string; a
         return `${hh}:${mm}`;
       })
       .join(" · ");
-    return [fecha, r.name, r.dose, horarios, r.status].map(esc).join(",");
+    const fechasSeleccionadas = r.selectedDates?.map(dateString => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-ES');
+    }).join(" · ") || "—";
+    return [fecha, r.name, r.dose, fechasSeleccionadas, horarios, r.status].map(esc).join(",");
   });
   
   csvContent += [header, ...lines].join("\n");
@@ -101,6 +108,7 @@ export async function addToHistory(entry: {
   at: string;
   status: HistoryStatus;
   scheduledTimes: string[];
+  selectedDates?: string[];
 }): Promise<void> {
   try {
     console.log('[History] Iniciando addToHistory con entrada:', entry);
@@ -111,6 +119,7 @@ export async function addToHistory(entry: {
       name: entry.name,
       dose: entry.dose,
       scheduledTimes: entry.scheduledTimes,
+      selectedDates: entry.selectedDates,
       status: entry.status,
       at: entry.at,
     };

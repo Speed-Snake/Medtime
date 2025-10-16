@@ -8,6 +8,7 @@ export type SupabaseHistoryEntry = {
   med_name: string;
   dose: string;
   scheduled_times: string[]; // Volver a array (PostgreSQL array)
+  selected_dates?: string[]; // Fechas seleccionadas (YYYY-MM-DD)
   status: 'Tomado' | 'Cancelado';
   taken_at: string;
   created_at?: string;
@@ -200,7 +201,7 @@ export function supabaseHistoryToCSV(entries: SupabaseHistoryEntry[], userInfo?:
     csvContent += `\n`; // Línea en blanco
   }
   
-  const header = ["fecha", "medicamento", "dosis", "horarios", "estado"].join(",");
+  const header = ["fecha", "medicamento", "dosis", "fechas_seleccionadas", "horarios", "estado"].join(",");
   
   const lines = entries.map((entry) => {
     const fecha = new Date(entry.taken_at).toLocaleString();
@@ -215,7 +216,12 @@ export function supabaseHistoryToCSV(entries: SupabaseHistoryEntry[], userInfo?:
       })
       .join(" · ");
     
-    return [fecha, entry.med_name, entry.dose, horarios, entry.status].map(esc).join(",");
+    const fechasSeleccionadas = entry.selected_dates?.map(dateString => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-ES');
+    }).join(" · ") || "—";
+    
+    return [fecha, entry.med_name, entry.dose, fechasSeleccionadas, horarios, entry.status].map(esc).join(",");
   });
   
   csvContent += [header, ...lines].join("\n");

@@ -642,7 +642,145 @@ export async function scheduleTestNotification(): Promise<string | null> {
 }
 
 /**
- * Programa una notificación con configuración de alarma
+ * Programa notificaciones para días específicos con configuración de alarma
+ */
+export async function scheduleMedicationNotificationWithAlarmForDates(medication: MedItem, scheduledTime: string): Promise<string[]> {
+  try {
+    console.log(`[NotificationService] Programando notificaciones para fechas específicas de ${medication.name} a las ${scheduledTime}`);
+    
+    const alarmSettings = await loadAlarmSettings();
+    
+    // Si las alarmas están deshabilitadas, no programar
+    if (!alarmSettings.enabled) {
+      console.log('[NotificationService] Alarmas deshabilitadas, no se programará notificación');
+      return [];
+    }
+    
+    const hasPermission = await requestNotificationPermissions();
+    if (!hasPermission) {
+      console.log('[NotificationService] No se pueden programar notificaciones sin permisos');
+      return [];
+    }
+
+    // Si no hay fechas seleccionadas, usar el comportamiento anterior
+    if (!medication.selectedDates || medication.selectedDates.length === 0) {
+      console.log('[NotificationService] No hay fechas seleccionadas, usando comportamiento por defecto');
+      const id = await scheduleMedicationNotificationWithAlarm(medication, scheduledTime);
+      return id ? [id] : [];
+    }
+
+    const now = new Date();
+    const notificationIds: string[] = [];
+    
+    // Parsear la hora programada
+    let hours, minutes;
+    
+    if (scheduledTime.includes('T')) {
+      const date = new Date(scheduledTime);
+      if (isNaN(date.getTime())) {
+        console.error('[NotificationService] Fecha ISO inválida:', scheduledTime);
+        return [];
+      }
+      hours = date.getHours();
+      minutes = date.getMinutes();
+    } else {
+      const timeParts = scheduledTime.split(':');
+      if (timeParts.length !== 2) {
+        console.error('[NotificationService] Formato de hora inválido:', scheduledTime);
+        return [];
+      }
+      hours = parseInt(timeParts[0], 10);
+      minutes = parseInt(timeParts[1], 10);
+    }
+    
+    // Validar hora
+    if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      console.error('[NotificationService] Hora inválida:', scheduledTime);
+      return [];
+    }
+
+    // Programar notificación para cada fecha seleccionada
+    for (const dateString of medication.selectedDates) {
+      try {
+        const selectedDate = new Date(dateString);
+        if (isNaN(selectedDate.getTime())) {
+          console.error('[NotificationService] Fecha inválida:', dateString);
+          continue;
+        }
+
+        // Crear fecha con la hora programada
+        const triggerDate = new Date(selectedDate);
+        triggerDate.setHours(hours, minutes, 0, 0);
+        
+        // Solo programar si la fecha es en el futuro
+        if (triggerDate.getTime() <= now.getTime()) {
+          console.log(`[NotificationService] Fecha ${dateString} ya pasó, saltando`);
+          continue;
+        }
+
+        // Generar ID único para esta fecha específica
+        const timeKey = scheduledTime.replace(/[:.]/g, '_');
+        const dateKey = dateString.replace(/-/g, '_');
+        const notificationId = `${medication.id}_${dateKey}_${timeKey}`;
+        
+        console.log(`[NotificationService] Programando para ${dateString} a las ${triggerDate.toLocaleTimeString()}`);
+        
+        // Cancelar notificación existente con el mismo ID para evitar duplicados
+        try {
+          await Notifications.cancelScheduledNotificationAsync(notificationId);
+        } catch (error) {
+          // No es un error si no existe la notificación
+        }
+        
+        // Configurar notificación
+        const notificationRequest = {
+          identifier: notificationId,
+          content: {
+            title: '🚨 ¡HORA DE MEDICAMENTO!',
+            body: `Es hora de tomar ${medication.name} (${medication.dose})`,
+            sound: 'default',
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            data: {
+              medicationId: medication.id,
+              medicationName: medication.name,
+              dose: medication.dose,
+              scheduledTime: scheduledTime,
+              selectedDate: dateString,
+              isAlarm: true,
+              showModal: true,
+            },
+            categoryIdentifier: 'MEDICATION_ALARM',
+            ...(Platform.OS === 'android' && {
+              channelId: 'medtime-reminders',
+              vibrate: [0, 1000, 500, 1000, 500, 1000],
+              lights: true,
+              lightColor: '#FF231F7C',
+            }),
+          },
+          trigger: {
+            type: 'date' as Notifications.SchedulableTriggerInputTypes.DATE,
+            date: triggerDate,
+          },
+        };
+
+        await Notifications.scheduleNotificationAsync(notificationRequest);
+        notificationIds.push(notificationId);
+        
+        console.log(`[NotificationService] ✅ Notificación programada para ${dateString} a las ${triggerDate.toLocaleTimeString()}`);
+      } catch (error) {
+        console.error(`[NotificationService] Error al programar para fecha ${dateString}:`, error);
+      }
+    }
+    
+    return notificationIds;
+  } catch (error) {
+    console.error('[NotificationService] Error al programar notificaciones para fechas específicas:', error);
+    return [];
+  }
+}
+
+/**
+ * Programa una notificación con configuración de alarma (comportamiento anterior)
  */
 export async function scheduleMedicationNotificationWithAlarm(medication: MedItem, scheduledTime: string): Promise<string | null> {
   try {

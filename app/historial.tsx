@@ -222,6 +222,19 @@ const HistorialScreen = React.memo(function HistorialScreen() {
     // Convertir scheduled_times a array si es string (Supabase) o mantener como array (local)
     const timesArray = Array.isArray(scheduledTimes) ? scheduledTimes : [scheduledTimes];
     const horarios = timesArray.map(fmtHour).join(" · ");
+    
+    // Formatear fechas seleccionadas si existen (ordenadas de menor a mayor)
+    const selectedDates = isSupabaseItem ? (item as SupabaseHistoryEntry).selected_dates : (item as HistoryEntry).selectedDates;
+    const fechasFormateadas = selectedDates?.sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime())
+      .map((dateString: string) => {
+        const date = new Date(dateString);
+        const dayName = date.toLocaleDateString('es-ES', { weekday: 'short' });
+        const dayNumber = date.getDate();
+        const monthName = date.toLocaleDateString('es-ES', { month: 'short' });
+        return `${dayName} ${dayNumber} ${monthName}`;
+      })
+      .join(" · ") || "—";
+    
     const badgeBg = status === "Tomado" ? UI.BADGE_BLUE : UI.BADGE_RED;
 
     return (
@@ -234,6 +247,7 @@ const HistorialScreen = React.memo(function HistorialScreen() {
         </View>
         <Text style={s.subText}>{new Date(dateField).toLocaleString()}</Text>
         <Text style={s.subText}>Dosis: <Text style={s.bold}>{dose}</Text></Text>
+        <Text style={s.subText}>Fechas: <Text style={s.bold}>{fechasFormateadas}</Text></Text>
         <Text style={s.subText}>Horarios: <Text style={s.bold}>{horarios || "—"}</Text></Text>
       </View>
     );
